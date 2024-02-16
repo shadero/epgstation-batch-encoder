@@ -6,30 +6,9 @@ use reqwest::Url;
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 
 use super::model::{
-    Record, RecordId, RecordedEndpointResponse, RecordedQuery, VideoFileId, VideoFileProperty,
+    Record, RecordId, RecordedEndpointResponse, RecordedQuery, TransferProgress, VideoFileId,
+    VideoFileProperty,
 };
-
-pub struct TransferProgress {
-    pub(in crate::epg_station_api) total_bytes: u64,
-    pub(in crate::epg_station_api) current_bytes: u64,
-}
-
-impl TransferProgress {
-    fn new(total: u64, current: u64) -> Self {
-        Self {
-            total_bytes: total,
-            current_bytes: current,
-        }
-    }
-
-    pub fn current_bytes(&self) -> u64 {
-        self.current_bytes
-    }
-
-    pub fn total_bytes(&self) -> u64 {
-        self.total_bytes
-    }
-}
 
 pub struct Client {
     host: Url,
@@ -68,24 +47,30 @@ impl Client {
         progress: mpsc::Sender<TransferProgress>,
     ) -> Result<()> {
         let mut url = self.host.clone();
-        url.set_path(&format!("/api/videos/{}", videofile_id));
+        url.set_path(&format!("/api/videos/{videofile_id}"));
 
         let response = reqwest::get(url).await?;
-        let byte_size: u64 = response
+
+        let content_length: u64 = response
             .headers()
             .get("content-length")
             .unwrap()
             .to_str()?
             .parse()?;
+
         let mut stream = response.bytes_stream();
         let mut file = tokio::fs::File::create(target).await?;
 
-        let mut current_byte_size = 0;
+        let mut received_size = 0;
+
         while let Some(chunk) = stream.next().await {
             let chunk = &chunk?;
-            file.write_all(&chunk).await?;
-            current_byte_size += chunk.len() as u64;
-            let _ = progress.try_send(TransferProgress::new(byte_size, current_byte_size));
+            file.write_all(chunk).await?;
+            received_size += chunk.len() as u64;
+            let _ = progress.try_send(TransferProgress {
+                total_bytes: content_length,
+                current_bytes: received_size,
+            });
         }
 
         Ok(())
@@ -109,7 +94,10 @@ impl Client {
             move |buf| match buf {
                 Ok(buf) => {
                     sent_bytes += buf.len() as u64;
-                    let _ = progress.try_send(TransferProgress::new(file_size, sent_bytes));
+                    let _ = progress.try_send(TransferProgress {
+                        total_bytes: file_size,
+                        current_bytes: sent_bytes,
+                    });
                 }
                 Err(_) => {}
             },

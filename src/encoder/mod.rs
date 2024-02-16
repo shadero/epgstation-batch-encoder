@@ -6,13 +6,13 @@ use ffprobe::ffprobe;
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 
-mod model;
-pub use model::FfmpegProgress;
+pub mod model;
+use model::EncodeProgress;
 
 pub async fn encode_video_file(
     source: &Path,
     target: &Path,
-    progress: mpsc::Sender<FfmpegProgress>,
+    progress: mpsc::Sender<EncodeProgress>,
 ) -> Result<()> {
     let source_str = source.to_string_lossy();
     let target_str = target.to_string_lossy();
@@ -66,14 +66,19 @@ pub async fn encode_video_file(
 
     let mut ffmpeg = builder.run().await.unwrap();
 
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     let total_secs = source_props.format.duration.unwrap().parse::<f64>()? as u64;
-    let _ = progress.try_send(FfmpegProgress::new(0, total_secs));
+    let _ = progress.try_send(EncodeProgress {
+        current_secs: 0,
+        total_secs,
+    });
 
     while let Some(v) = ffmpeg.progress.next().await {
-        let _ = progress.try_send(FfmpegProgress::new(
-            v.unwrap().out_time.unwrap().as_secs() as u64,
+        let _ = progress.try_send(EncodeProgress {
+            current_secs: v.unwrap().out_time.unwrap().as_secs(),
             total_secs,
-        ));
+        });
     }
 
     ffmpeg.process.wait_with_output()?;

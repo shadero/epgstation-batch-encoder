@@ -82,6 +82,7 @@ impl RecordedQuery {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     #[allow(dead_code)]
     pub fn is_reverse(mut self, is_reverse: bool) -> Self {
         self.is_reverse = Some(is_reverse);
@@ -118,5 +119,20 @@ impl RecordedQuery {
         }
 
         parameters
+    }
+}
+
+pub struct TransferProgress {
+    pub(in crate::epg_station_api) current_bytes: u64,
+    pub(in crate::epg_station_api) total_bytes: u64,
+}
+
+impl TransferProgress {
+    pub fn current_bytes(&self) -> u64 {
+        self.current_bytes
+    }
+
+    pub fn total_bytes(&self) -> u64 {
+        self.total_bytes
     }
 }
