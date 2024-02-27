@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use ffmpeg_cli::{FfmpegBuilder, File, Parameter};
-use ffprobe::ffprobe;
+use ffprobe::ConfigBuilder;
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
 
@@ -28,7 +28,10 @@ pub async fn encode_video_file(
         .option(Parameter::KeyValue("acodec", "copy"))
         .option(Parameter::KeyValue("scodec", "mov_text"));
 
-    let source_props = ffprobe(source)?;
+    let source_props = ConfigBuilder::new()
+        .analyzeduration(Some("100M".to_string()))
+        .probesize(Some("100M".to_string()))
+        .run(source)?;
 
     let map_options: Vec<_> = source_props
         .streams
